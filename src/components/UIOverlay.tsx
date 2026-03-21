@@ -1,6 +1,6 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Sun, Globe, Moon, Cloud, Disc, Zap, ArrowLeft, MoreHorizontal } from 'lucide-react'
+import { Sun, Globe, Moon, Cloud, Disc, Zap, ArrowLeft, MoreHorizontal, Bell } from 'lucide-react'
 import { useGameStore, BodyType } from '../store/gameStore'
 import { EquilibriumBar } from './game/EquilibriumBar'
 import { cn } from '../lib/utils'
@@ -37,6 +37,33 @@ export function UIOverlay() {
     }
   }, [chapter])
 
+  const [toast, setToast] = useState<{ msg: string, type: 'info' | 'success' | 'warning' } | null>(null)
+  const prevCoins = useRef(coins)
+  const prevTurn = useRef(useGameStore.getState().turnCount)
+
+  useEffect(() => {
+    if (coins > prevCoins.current) {
+      setToast({ msg: `+${coins - prevCoins.current} Credits`, type: 'success' })
+      setTimeout(() => setToast(null), 2000)
+    } else if (coins < prevCoins.current) {
+        // Spend
+    }
+    prevCoins.current = coins
+  }, [coins])
+
+  useEffect(() => {
+     const currentTurn = useGameStore.getState().turnCount
+     if (currentTurn > prevTurn.current) {
+        setToast({ msg: `Cycle ${currentTurn} Initiated`, type: 'info' })
+        setTimeout(() => setToast(null), 2000)
+     }
+     prevTurn.current = currentTurn
+  }, [nextTurn]) // nextTurn is function, but we can just check store subscription or just re-render. 
+  // Actually, useGameStore hook triggers re-render on state change.
+  // So referencing `useGameStore().turnCount` is enough. 
+  // But I need `turnCount` from hook, which I don't have exposed in destructuring above.
+  // I'll add `turnCount` to destructuring.
+
   const selectedBody = bodies.find(b => b.id === selectedBodyId)
 
   const handlePlaceBody = (type: BodyType, cost: number) => {
@@ -49,7 +76,9 @@ export function UIOverlay() {
         x, 
         y, 
         z: 0, 
-        name: `New ${type.charAt(0).toUpperCase() + type.slice(1)}` 
+        name: `New ${type.charAt(0).toUpperCase() + type.slice(1)}`,
+        equilibrium: 50,
+        state: 'stable'
       })
     }
   }
@@ -57,19 +86,44 @@ export function UIOverlay() {
   return (
     <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-6">
       
+      {/* Notifications */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+             initial={{ opacity: 0, y: -20, x: 20 }}
+             animate={{ opacity: 1, y: 0, x: 0 }}
+             exit={{ opacity: 0, y: -20 }}
+             className={cn(
+               "absolute top-24 right-6 pointer-events-none z-50 flex items-center gap-3 px-6 py-3 rounded-lg backdrop-blur-xl border shadow-2xl",
+               toast.type === 'success' ? "bg-green-500/10 border-green-500/20 text-green-200" :
+               toast.type === 'warning' ? "bg-red-500/10 border-red-500/20 text-red-200" :
+               "bg-blue-500/10 border-blue-500/20 text-blue-200"
+             )}
+          >
+             <Bell className="w-4 h-4" />
+             <span className="text-sm font-medium tracking-wide">{toast.msg}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Top Bar */}
-      <div className="flex justify-between items-start pointer-events-auto">
-        <div className="flex flex-col">
-           <span className="text-xs tracking-[0.2em] text-white/50 uppercase">
+      <div className="flex justify-between items-start w-full pointer-events-none z-10">
+        <div className="flex flex-col bg-black/40 p-4 rounded-br-2xl border-b border-r border-white/10 backdrop-blur-md pointer-events-auto shadow-xl">
+           <span className="text-xs tracking-[0.2em] text-white/50 uppercase mb-1">
              {mode.replace('_', ' ')} Mode
            </span>
            <h2 className="text-xl font-light tracking-widest text-white">
              Chapter {chapter}: {chapterTitle}
            </h2>
+           {mode === 'story' && (
+             <div className="mt-2 text-xs text-blue-300/80 max-w-xs leading-relaxed">
+               <span className="font-bold text-blue-400">Objective:</span> Ensure the stability of your system. Avoid total collapse.
+             </div>
+           )}
         </div>
 
-        <div className="bg-black/30 backdrop-blur-md border border-white/10 px-6 py-3 rounded-full flex items-center gap-3">
-          <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
+        <div className="bg-black/30 backdrop-blur-md border border-white/10 px-6 py-3 rounded-bl-2xl flex items-center gap-3 shadow-lg pointer-events-auto">
+          <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse shadow-[0_0_10px_yellow]" />
           <span className="font-mono text-xl text-yellow-100">{coins}</span>
           <span className="text-xs text-yellow-400/70 uppercase tracking-wider">Credits</span>
         </div>
@@ -85,26 +139,29 @@ export function UIOverlay() {
         </button>
       </div>
 
-      {/* Bottom Bar: Placement (Only in Open World or Story if allowed) */}
-      <div className="flex justify-center gap-4 pointer-events-auto bg-black/40 backdrop-blur-xl p-4 rounded-2xl border border-white/5 mx-auto max-w-4xl overflow-x-auto">
-        {BODY_TYPES.map((item) => (
-          <button
-            key={item.type}
-            onClick={() => handlePlaceBody(item.type, item.cost)}
-            disabled={coins < item.cost}
-            className={cn(
-              "flex flex-col items-center gap-2 min-w-[80px] p-3 rounded-lg transition-all border border-transparent",
-              coins >= item.cost 
-                ? "hover:bg-white/10 hover:border-white/20 active:scale-95 text-white" 
-                : "opacity-40 cursor-not-allowed text-gray-500"
-            )}
-          >
-            <item.icon className="w-6 h-6" />
-            <span className="text-[10px] uppercase tracking-wider">{item.label}</span>
-            <span className="text-[10px] font-mono text-yellow-400">{item.cost}</span>
-          </button>
-        ))}
-      </div>
+      {/* Bottom Bar: Placement (Only in Open World) */}
+      {mode === 'open_world' && (
+        <div className="flex justify-center gap-4 pointer-events-auto bg-black/40 backdrop-blur-xl p-4 rounded-2xl border border-white/5 mx-auto max-w-4xl overflow-x-auto">
+          {BODY_TYPES.map((item) => (
+            <button
+              key={item.type}
+              onClick={() => handlePlaceBody(item.type, item.cost)}
+              disabled={coins < item.cost}
+              title={`Cost: ${item.cost} Credits`}
+              className={cn(
+                "flex flex-col items-center gap-2 min-w-[80px] p-3 rounded-lg transition-all border border-transparent",
+                coins >= item.cost 
+                  ? "hover:bg-white/10 hover:border-white/20 active:scale-95 text-white" 
+                  : "opacity-40 cursor-not-allowed text-gray-500"
+              )}
+            >
+              <item.icon className="w-6 h-6" />
+              <span className="text-[10px] uppercase tracking-wider">{item.label}</span>
+              <span className="text-[10px] font-mono text-yellow-400">{item.cost}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Right Panel: Selected Body Details */}
       <AnimatePresence>

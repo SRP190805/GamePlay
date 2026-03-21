@@ -9,9 +9,10 @@ import { UIOverlay } from './components/UIOverlay'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ChoiceModal } from './components/game/ChoiceModal'
 import { PauseMenu } from './components/PauseMenu'
+import { GameOverScreen } from './components/GameOverScreen'
 
 function App() {
-  const { mode, initSession, currentEvent, togglePause, isPaused } = useGameStore()
+  const { mode, initSession, currentEvent, togglePause, isPaused, gameOver } = useGameStore()
 
   useEffect(() => {
     initSession()
@@ -68,6 +69,7 @@ function App() {
             <UIOverlay />
             {currentEvent && <ChoiceModal />}
             {isPaused && <PauseMenu />}
+            {gameOver && <GameOverScreen />}
           </motion.div>
         )}
       </AnimatePresence>

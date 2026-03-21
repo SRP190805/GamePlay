@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
 import { createClient } from '@supabase/supabase-js'
+import { soundManager } from '../lib/sound'
 
 // Supabase client initialization (Assuming env vars are set by supabase_init)
 // Since we don't have direct access to env vars in browser without Vite loading them,
@@ -34,11 +35,13 @@ interface GameState {
   selectedBodyId: string | null
   isPaused: boolean
   currentEvent: GameEvent | null
+  gameOver: { isOver: boolean; reason: string } | null
   
   // Actions
   initSession: () => Promise<void>
   setMode: (mode: GameMode) => void
-  addBody: (body: Omit<CelestialBody, 'id' | 'state' | 'equilibrium'>) => Promise<void>
+  addBody: (body: Omit<CelestialBody, 'id'>) => Promise<void>
+  restartGame: () => void
   updateBody: (id: string, updates: Partial<CelestialBody>) => Promise<void>
   removeBody: (id: string) => Promise<void>
   selectBody: (id: string | null) => void
@@ -72,6 +75,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   selectedBodyId: null,
   isPaused: false,
   currentEvent: null,
+  gameOver: null,
 
   initSession: async () => {
     let sessionId = get().sessionId
@@ -115,7 +119,51 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
-  setMode: (mode) => set({ mode }),
+  setMode: async (mode) => {
+    set({ mode })
+    
+    // Story Mode Initialization
+    if (mode === 'story') {
+       const { sessionId } = get()
+       // Clear existing bodies for fresh story start if needed, or just ensure we have the setup
+       // For this version, let's assume if 0 bodies, we populate story starter kit
+       if (get().bodies.length === 0 && sessionId) {
+         const storyBodies: Omit<CelestialBody, 'id'>[] = [
+           { type: 'star', x: 0, y: 0, z: 0, equilibrium: 60, state: 'stable', name: 'Sol Prime' },
+           { type: 'planet', x: 8, y: 0, z: 0, equilibrium: 50, state: 'stable', name: 'Terra Nova' },
+           { type: 'gas_giant', x: -12, y: 5, z: 0, equilibrium: 40, state: 'stressed', name: 'Behemoth' }
+         ]
+         
+         // Add them one by one (or bulk if we supported it)
+         for (const b of storyBodies) {
+            await get().addBody(b)
+         }
+       }
+    }
+  },
+
+  restartGame: async () => {
+    const { sessionId } = get()
+    set({
+      coins: 100,
+      turnCount: 0,
+      chapter: 1,
+      bodies: [],
+      selectedBodyId: null,
+      gameOver: null,
+      mode: 'menu' // Go back to menu or restart immediately?
+    })
+    
+    if (sessionId) {
+      // Clean DB
+      await supabase.from('celestial_bodies').delete().eq('session_id', sessionId)
+      await supabase.from('game_sessions').update({ 
+        coins: 100, 
+        turn_count: 0, 
+        chapter: 1 
+      }).eq('id', sessionId)
+    }
+  },
 
   addBody: async (bodyData) => {
     const { sessionId } = get()
@@ -123,9 +171,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     const newBody: CelestialBody = {
       id: uuidv4(),
-      ...bodyData,
-      equilibrium: 50,
-      state: 'stable'
+      ...bodyData
     }
 
     // Optimistic update
@@ -231,37 +277,57 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // 3. Random Event Trigger (30% chance per turn if > 0 bodies AND no story event)
     if (!newEvent && bodies.length > 0 && Math.random() < 0.3) {
-      const randomBody = bodies[Math.floor(Math.random() * bodies.length)]
-      const isGood = Math.random() > 0.5
-      
-      newEvent = {
-        id: uuidv4(),
-        bodyId: randomBody.id,
-        title: isGood ? `Stellar Evolution: ${randomBody.name}` : `Cosmic Instability: ${randomBody.name}`,
-        description: isGood 
-          ? `The celestial body ${randomBody.name} shows signs of positive evolution. How will you guide it?`
-          : `Disturbing gravitational waves detected from ${randomBody.name}. What is your directive?`,
-        choices: [
-          {
-            label: "Nurture (Genesis)",
-            type: "genesis",
-            effect: (b) => ({ equilibrium: Math.min(100, b.equilibrium + 15), state: 'evolving' }),
-            coinReward: 20
-          },
-          {
-            label: "Stabilize (Equilibrium)",
-            type: "equilibrium",
-            effect: (b) => ({ equilibrium: b.equilibrium + 5, state: 'stable' }),
-            coinReward: 10
-          },
-          {
-            label: "Exploit (Collapse)",
-            type: "collapse",
-            effect: (b) => ({ equilibrium: Math.max(0, b.equilibrium - 20), state: 'stressed' }),
-            coinReward: 50 // High short term gain
-          }
-        ]
-      }
+       const randomBody = bodies[Math.floor(Math.random() * bodies.length)]
+       const isGood = Math.random() > 0.5
+       
+       newEvent = {
+         id: uuidv4(),
+         bodyId: randomBody.id,
+         title: isGood ? `Stellar Evolution: ${randomBody.name}` : `Cosmic Instability: ${randomBody.name}`,
+         description: isGood 
+           ? `The celestial body ${randomBody.name} shows signs of positive evolution. How will you guide it?`
+           : `Disturbing gravitational waves detected from ${randomBody.name}. What is your directive?`,
+         choices: [
+           {
+             label: "Nurture (Genesis)",
+             type: "genesis",
+             effect: (b) => ({ equilibrium: Math.min(100, b.equilibrium + 15), state: 'evolving' }),
+             coinReward: 20
+           },
+           {
+             label: "Stabilize (Equilibrium)",
+             type: "equilibrium",
+             effect: (b) => ({ equilibrium: b.equilibrium + 5, state: 'stable' }),
+             coinReward: 10
+           },
+           {
+             label: "Exploit (Collapse)",
+             type: "collapse",
+             effect: (b) => ({ equilibrium: Math.max(0, b.equilibrium - 20), state: 'stressed' }),
+             coinReward: 50 // High short term gain
+           }
+         ]
+       }
+    }
+
+    // 4. Game Over Checks
+    // Check if black hole exists
+    if (bodies.some(b => b.type === 'black_hole')) {
+       set({ gameOver: { isOver: true, reason: 'Singularity Event: A Black Hole has consumed the system.' } })
+       return
+    }
+    
+    // Check collapse
+    if (bodies.length === 0 && turnCount > 1) {
+       set({ gameOver: { isOver: true, reason: 'Universal Collapse: No celestial bodies remain.' } })
+       return
+    }
+
+    // Play Sound
+    if (newEvent) {
+       soundManager.playSelect() 
+    } else {
+       soundManager.playHover()
     }
 
     set({ 
