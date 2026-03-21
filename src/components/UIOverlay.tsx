@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Sun, Globe, Moon, Cloud, Disc, Zap, ArrowLeft, MoreHorizontal, Bell } from 'lucide-react'
+import { Sun, Globe, Moon, Cloud, Disc, Zap, ArrowLeft, MoreHorizontal, Bell, Trash2, Settings, Info } from 'lucide-react'
 import { useGameStore, BodyType } from '../store/gameStore'
 import { EquilibriumBar } from './game/EquilibriumBar'
 import { cn } from '../lib/utils'
+import { SettingsMenu } from './SettingsMenu'
 
 const BODY_TYPES: { type: BodyType; label: string; icon: any; cost: number }[] = [
   { type: 'star', label: 'Star', icon: Sun, cost: 50 },
@@ -24,9 +25,12 @@ export function UIOverlay() {
     addBody, 
     spendCoins, 
     updateBody,
+    removeBody,
     nextTurn,
     chapter
   } = useGameStore()
+  
+  const [showSettings, setShowSettings] = useState(false)
 
   const chapterTitle = useMemo(() => {
     switch (chapter) {
@@ -58,34 +62,77 @@ export function UIOverlay() {
         setTimeout(() => setToast(null), 2000)
      }
      prevTurn.current = currentTurn
-  }, [nextTurn]) // nextTurn is function, but we can just check store subscription or just re-render. 
-  // Actually, useGameStore hook triggers re-render on state change.
-  // So referencing `useGameStore().turnCount` is enough. 
-  // But I need `turnCount` from hook, which I don't have exposed in destructuring above.
-  // I'll add `turnCount` to destructuring.
+  }, [nextTurn]) 
 
   const selectedBody = bodies.find(b => b.id === selectedBodyId)
 
   const handlePlaceBody = (type: BodyType, cost: number) => {
     if (spendCoins(cost)) {
-      // Random position for now, ideally player clicks on canvas
-      const x = (Math.random() - 0.5) * 20
-      const y = (Math.random() - 0.5) * 20
+      // Find a "parent" if nearby, or just place randomly in view.
+      // For improved UX, we'd cast a ray.
+      // For now, let's just place at random location near center or near selected body.
+      let parentId: string | null = null
+      let x = (Math.random() - 0.5) * 10
+      let z = (Math.random() - 0.5) * 10 // Use Z instead of Y for floor plane layout
+      
+      if (selectedBodyId) {
+         // Place in orbit of selected?
+         // User requirement: "if a star/planet is put and planets/moons are put around it it should revolve"
+         const parent = bodies.find(b => b.id === selectedBodyId)
+         if (parent && (parent.type === 'star' || parent.type === 'planet' || parent.type === 'gas_giant')) {
+            parentId = parent.id
+            x = 0 
+            z = 0 // Relative
+            // Set orbit radius
+            const radius = parent.type === 'star' ? 10 + Math.random() * 10 : 4 + Math.random() * 2
+            
+            addBody({ 
+              type, 
+              x, 
+              y: 0, 
+              z, 
+              name: `New ${type.charAt(0).toUpperCase() + type.slice(1)}`,
+              equilibrium: 50,
+              state: 'stable',
+              parentId,
+              orbitRadius: radius,
+              orbitSpeed: (Math.random() * 0.5) + 0.1,
+              orbitAngle: Math.random() * Math.PI * 2,
+              rotationSpeed: 0.01
+            })
+            return
+         }
+      }
+
       addBody({ 
         type, 
         x, 
-        y, 
-        z: 0, 
+        y: 0, 
+        z, 
         name: `New ${type.charAt(0).toUpperCase() + type.slice(1)}`,
         equilibrium: 50,
-        state: 'stable'
+        state: 'stable',
+        parentId: null,
+        orbitRadius: 0,
+        orbitSpeed: 0,
+        orbitAngle: 0,
+        rotationSpeed: 0.01
       })
     }
   }
 
   return (
-    <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-6">
+    <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-6 overflow-hidden">
       
+      {/* Settings Modal */}
+      <AnimatePresence>
+        {showSettings && (
+            <div className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                <SettingsMenu onClose={() => setShowSettings(false)} />
+            </div>
+        )}
+      </AnimatePresence>
+
       {/* Notifications */}
       <AnimatePresence>
         {toast && (
@@ -108,18 +155,27 @@ export function UIOverlay() {
 
       {/* Top Bar */}
       <div className="flex justify-between items-start w-full pointer-events-none z-10">
-        <div className="flex flex-col bg-black/40 p-4 rounded-br-2xl border-b border-r border-white/10 backdrop-blur-md pointer-events-auto shadow-xl">
-           <span className="text-xs tracking-[0.2em] text-white/50 uppercase mb-1">
-             {mode.replace('_', ' ')} Mode
-           </span>
-           <h2 className="text-xl font-light tracking-widest text-white">
-             Chapter {chapter}: {chapterTitle}
-           </h2>
-           {mode === 'story' && (
-             <div className="mt-2 text-xs text-blue-300/80 max-w-xs leading-relaxed">
-               <span className="font-bold text-blue-400">Objective:</span> Ensure the stability of your system. Avoid total collapse.
-             </div>
-           )}
+        <div className="flex flex-col gap-2">
+            <div className="flex flex-col bg-black/40 p-4 rounded-br-2xl border-b border-r border-white/10 backdrop-blur-md pointer-events-auto shadow-xl">
+               <span className="text-xs tracking-[0.2em] text-white/50 uppercase mb-1">
+                 {mode.replace('_', ' ')} Mode
+               </span>
+               <h2 className="text-xl font-light tracking-widest text-white">
+                 Chapter {chapter}: {chapterTitle}
+               </h2>
+               {mode === 'story' && (
+                 <div className="mt-2 text-xs text-blue-300/80 max-w-xs leading-relaxed">
+                   <span className="font-bold text-blue-400">Objective:</span> Ensure the stability of your system. Avoid total collapse.
+                 </div>
+               )}
+            </div>
+            
+            <button 
+                onClick={() => setShowSettings(true)}
+                className="pointer-events-auto w-10 h-10 flex items-center justify-center bg-black/40 hover:bg-white/10 rounded-full border border-white/10 backdrop-blur-md transition-colors"
+            >
+                <Settings className="w-4 h-4 text-white/70" />
+            </button>
         </div>
 
         <div className="bg-black/30 backdrop-blur-md border border-white/10 px-6 py-3 rounded-bl-2xl flex items-center gap-3 shadow-lg pointer-events-auto">
@@ -209,7 +265,7 @@ export function UIOverlay() {
                 Created Cycle: {useGameStore.getState().turnCount}
               </div>
               
-              {/* Context Actions (Placeholder for now) */}
+              {/* Context Actions */}
               <div className="flex gap-2 mt-2">
                 <button 
                   onClick={() => updateBody(selectedBody.id, { name: selectedBody.name + ' (Renamed)' })}
@@ -217,9 +273,15 @@ export function UIOverlay() {
                 >
                   Rename
                 </button>
-                <button className="px-3 py-2 bg-white/5 hover:bg-white/10 rounded">
-                  <MoreHorizontal className="w-4 h-4 text-white/70" />
-                </button>
+                {mode === 'open_world' && (
+                    <button 
+                        onClick={() => removeBody(selectedBody.id)}
+                        className="px-3 py-2 bg-red-500/10 hover:bg-red-500/30 text-red-400 rounded transition-colors"
+                        title="Delete Body"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                    </button>
+                )}
               </div>
             </div>
           </motion.div>

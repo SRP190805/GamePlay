@@ -21,13 +21,22 @@ class SoundManager {
     return SoundManager.instance
   }
 
-  async init() {
+  init() {
     if (!this.initialized) {
-      await Tone.start()
-      this.initialized = true
-      // Lower overall volume
-      Tone.Destination.volume.value = -10
+      Tone.start().then(() => {
+        this.initialized = true
+        // Lower overall volume default
+        Tone.Destination.volume.value = -10
+      })
     }
+  }
+
+  setVolume(volume: number) {
+    if (!this.initialized) return
+    // Volume: -60 to 0 (dB). 0 is 100%, -60 is silent.
+    // Convert 0-100 linear slider to -60 to 0 logarithmic
+    const db = volume === 0 ? -Infinity : (Math.log10(volume / 100) * 20)
+    Tone.Destination.volume.rampTo(db, 0.1)
   }
 
   playSelect() {

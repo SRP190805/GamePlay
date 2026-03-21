@@ -82,7 +82,9 @@ export function CelestialBody({ data, isSelected }: CelestialBodyProps) {
 
   useFrame((state, delta) => {
     if (meshRef.current) {
-      meshRef.current.rotation.y += delta * speed
+      // Use rotation speed from data if available, else fallback to type speed
+      const rotSpeed = data.rotationSpeed || speed || 0.1
+      meshRef.current.rotation.y += delta * rotSpeed
     }
   })
 
@@ -93,7 +95,8 @@ export function CelestialBody({ data, isSelected }: CelestialBodyProps) {
   }
 
   return (
-    <group position={[data.x, data.y, data.z]}>
+    <group> 
+      {/* Position is handled by parent RecursiveBody to allow orbits */}
       {/* Selection Ring */}
       {isSelected && (
         <mesh rotation-x={Math.PI / 2}>

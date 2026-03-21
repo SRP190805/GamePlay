@@ -23,6 +23,16 @@ export interface CelestialBody {
   equilibrium: number // 0-100
   state: BodyState
   name: string
+  parentId: string | null
+  orbitRadius: number
+  orbitSpeed: number
+  orbitAngle: number
+  rotationSpeed: number
+}
+
+interface GameSettings {
+  volume: number // 0-100
+  motionSensitivity: number // 0.1-2.0
 }
 
 interface GameState {
@@ -36,10 +46,11 @@ interface GameState {
   isPaused: boolean
   currentEvent: GameEvent | null
   gameOver: { isOver: boolean; reason: string } | null
+  settings: GameSettings
   
   // Actions
   initSession: () => Promise<void>
-  setMode: (mode: GameMode) => void
+  setMode: (mode: GameMode) => Promise<void>
   addBody: (body: Omit<CelestialBody, 'id'>) => Promise<void>
   restartGame: () => void
   updateBody: (id: string, updates: Partial<CelestialBody>) => Promise<void>
@@ -50,6 +61,7 @@ interface GameState {
   nextTurn: () => void
   resolveEvent: (choiceIndex: number) => void
   togglePause: () => void
+  updateSettings: (settings: Partial<GameSettings>) => void
 }
 
 export interface GameEvent {
@@ -76,6 +88,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   isPaused: false,
   currentEvent: null,
   gameOver: null,
+  settings: {
+    volume: 50,
+    motionSensitivity: 1.0
+  },
 
   initSession: async () => {
     let sessionId = get().sessionId
@@ -107,7 +123,14 @@ export const useGameStore = create<GameState>((set, get) => ({
         .eq('session_id', sessionId)
       
       if (bodies) {
-        set({ bodies: bodies as CelestialBody[] })
+        set({ bodies: bodies.map((b: any) => ({
+          ...b,
+          parentId: b.parent_id || null,
+          orbitRadius: b.orbit_radius || 0,
+          orbitSpeed: b.orbit_speed || 0,
+          orbitAngle: b.orbit_angle || 0,
+          rotationSpeed: b.rotation_speed || 0
+        })) })
       }
     } else {
       // Create new session
@@ -119,25 +142,113 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
+  updateSettings: (newSettings) => {
+    set((state) => ({ settings: { ...state.settings, ...newSettings } }))
+    // Apply immediate effects
+    if (newSettings.volume !== undefined) {
+      soundManager.setVolume(newSettings.volume)
+    }
+  },
+
   setMode: async (mode) => {
     set({ mode })
+    const { sessionId } = get()
     
+    // Open World: Ensure blank slate if switching fresh?
+    // User requested: "open world mode it should be left blank"
+    // However, if we are returning to game, we might want to keep state.
+    // For now, let's assume switching TO open world from menu resets if empty?
+    // Or maybe we add a dedicated "New Game" button.
+    // Let's just clear if bodies are empty to be safe, but "left blank" implies starting state.
+    if (mode === 'open_world' && get().bodies.length === 0) {
+        // No pre-filled bodies. Just blank space.
+    }
+
     // Story Mode Initialization
-    if (mode === 'story') {
-       const { sessionId } = get()
-       // Clear existing bodies for fresh story start if needed, or just ensure we have the setup
-       // For this version, let's assume if 0 bodies, we populate story starter kit
-       if (get().bodies.length === 0 && sessionId) {
-         const storyBodies: Omit<CelestialBody, 'id'>[] = [
-           { type: 'star', x: 0, y: 0, z: 0, equilibrium: 60, state: 'stable', name: 'Sol Prime' },
-           { type: 'planet', x: 8, y: 0, z: 0, equilibrium: 50, state: 'stable', name: 'Terra Nova' },
-           { type: 'gas_giant', x: -12, y: 5, z: 0, equilibrium: 40, state: 'stressed', name: 'Behemoth' }
-         ]
-         
-         // Add them one by one (or bulk if we supported it)
-         for (const b of storyBodies) {
-            await get().addBody(b)
+    if (mode === 'story' && get().bodies.length === 0) {
+       // Proper Solar System
+       const sunId = uuidv4()
+       const earthId = uuidv4()
+       const jupiterId = uuidv4()
+       
+       const storyBodies: CelestialBody[] = [
+         // The Sun
+         { 
+            id: sunId,
+            type: 'star', 
+            x: 0, y: 0, z: 0, 
+            equilibrium: 80, 
+            state: 'stable', 
+            name: 'Sol Prime',
+            parentId: null,
+            orbitRadius: 0,
+            orbitSpeed: 0,
+            orbitAngle: 0,
+            rotationSpeed: 0.002
+         },
+         // Earth-like Planet
+         { 
+            id: earthId,
+            type: 'planet', 
+            x: 15, y: 0, z: 0, 
+            equilibrium: 60, 
+            state: 'stable', 
+            name: 'Terra Nova',
+            parentId: sunId,
+            orbitRadius: 15,
+            orbitSpeed: 0.2,
+            orbitAngle: Math.random() * Math.PI * 2,
+            rotationSpeed: 0.01
+         },
+         // Moon
+         { 
+            id: uuidv4(),
+            type: 'moon', 
+            x: 0, y: 0, z: 0, // Position relative to parent will be calculated in view
+            equilibrium: 50, 
+            state: 'stable', 
+            name: 'Luna',
+            parentId: earthId,
+            orbitRadius: 3,
+            orbitSpeed: 0.5,
+            orbitAngle: Math.random() * Math.PI * 2,
+            rotationSpeed: 0.005
+         },
+         // Gas Giant
+         { 
+            id: jupiterId,
+            type: 'gas_giant', 
+            x: 25, y: 0, z: 0, 
+            equilibrium: 50, 
+            state: 'stable', 
+            name: 'Behemoth',
+            parentId: sunId,
+            orbitRadius: 25,
+            orbitSpeed: 0.1,
+            orbitAngle: Math.random() * Math.PI * 2,
+            rotationSpeed: 0.008
+         },
+         // Moon of Gas Giant
+         { 
+            id: uuidv4(),
+            type: 'moon', 
+            x: 0, y: 0, z: 0, 
+            equilibrium: 40, 
+            state: 'stable', 
+            name: 'Titanus',
+            parentId: jupiterId,
+            orbitRadius: 4,
+            orbitSpeed: 0.4,
+            orbitAngle: Math.random() * Math.PI * 2,
+            rotationSpeed: 0.005
          }
+       ]
+       
+       // Bulk add or set
+       set({ bodies: storyBodies })
+       // Also persist... ideally we loop addBody but direct set is faster for init
+       if (sessionId) {
+          await supabase.from('celestial_bodies').insert(storyBodies.map(b => ({ ...b, session_id: sessionId })))
        }
     }
   },
@@ -169,6 +280,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const { sessionId } = get()
     if (!sessionId) return
 
+    // Ensure all required fields are present with defaults
     const newBody: CelestialBody = {
       id: uuidv4(),
       ...bodyData
@@ -187,7 +299,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       z: newBody.z,
       equilibrium: newBody.equilibrium,
       state: newBody.state,
-      name: newBody.name
+      name: newBody.name,
+      parent_id: newBody.parentId,
+      orbit_radius: newBody.orbitRadius,
+      orbit_speed: newBody.orbitSpeed,
+      orbit_angle: newBody.orbitAngle,
+      rotation_speed: newBody.rotationSpeed
     })
   },
 
@@ -196,17 +313,40 @@ export const useGameStore = create<GameState>((set, get) => ({
       bodies: state.bodies.map((b) => (b.id === id ? { ...b, ...updates } : b))
     }))
     
+    // Construct safe update object
+    const finalDbUpdates: any = {}
+    if (updates.x !== undefined) finalDbUpdates.x = updates.x
+    if (updates.y !== undefined) finalDbUpdates.y = updates.y
+    if (updates.z !== undefined) finalDbUpdates.z = updates.z
+    if (updates.equilibrium !== undefined) finalDbUpdates.equilibrium = updates.equilibrium
+    if (updates.state !== undefined) finalDbUpdates.state = updates.state
+    if (updates.name !== undefined) finalDbUpdates.name = updates.name
+    if (updates.parentId !== undefined) finalDbUpdates.parent_id = updates.parentId
+    if (updates.orbitRadius !== undefined) finalDbUpdates.orbit_radius = updates.orbitRadius
+    if (updates.orbitSpeed !== undefined) finalDbUpdates.orbit_speed = updates.orbitSpeed
+    if (updates.orbitAngle !== undefined) finalDbUpdates.orbit_angle = updates.orbitAngle
+    if (updates.rotationSpeed !== undefined) finalDbUpdates.rotation_speed = updates.rotationSpeed
+
     await supabase
       .from('celestial_bodies')
-      .update(updates)
+      .update(finalDbUpdates)
       .eq('id', id)
   },
 
   removeBody: async (id) => {
-    set((state) => ({
-      bodies: state.bodies.filter((b) => b.id !== id),
-      selectedBodyId: state.selectedBodyId === id ? null : state.selectedBodyId
-    }))
+    set((state) => {
+        const idsToRemove = new Set<string>()
+        const findChildren = (pid: string) => {
+            idsToRemove.add(pid)
+            state.bodies.filter(b => b.parentId === pid).forEach(child => findChildren(child.id))
+        }
+        findChildren(id)
+        
+        return {
+           bodies: state.bodies.filter((b) => !idsToRemove.has(b.id)),
+           selectedBodyId: idsToRemove.has(state.selectedBodyId || '') ? null : state.selectedBodyId
+        }
+    })
 
     await supabase.from('celestial_bodies').delete().eq('id', id)
   },
@@ -251,60 +391,45 @@ export const useGameStore = create<GameState>((set, get) => ({
     
     let newEvent: GameEvent | null = null
 
-    // 2. Story Progression (Simple Check)
-    if (mode === 'story') {
-       const { chapter } = get()
-       if (chapter === 1 && bodies.length >= 3) {
-         // Advance to Chapter 2
-         set({ chapter: 2 })
-         // Trigger a special event?
-         newEvent = {
-            id: uuidv4(),
-            bodyId: bodies[0].id,
-            title: "Chapter 2: Expansion",
-            description: "You have established a stable system. Now, look outward. The universe is vast and dangerous.",
-            choices: [
-              {
-                label: "Begin Expansion",
-                type: "genesis",
-                effect: (b) => ({ equilibrium: b.equilibrium + 10 }), // Small boost
-                coinReward: 100
-              }
-            ]
-         }
-       }
-    }
+    // 2. Story Progression (Infinite)
+    // Removed cap. Just survival.
+    // ...
 
-    // 3. Random Event Trigger (30% chance per turn if > 0 bodies AND no story event)
+    // 3. Random Event Trigger
+    // (30% chance per turn if > 0 bodies AND no story event)
     if (!newEvent && bodies.length > 0 && Math.random() < 0.3) {
        const randomBody = bodies[Math.floor(Math.random() * bodies.length)]
-       const isGood = Math.random() > 0.5
+       // More variety
+       const scenarios = [
+         { title: "Solar Flare", desc: "A massive solar flare threatens the system.", type: "danger" },
+         { title: "Cosmic Bloom", desc: "Rare cosmic radiation is accelerating growth.", type: "good" },
+         { title: "Gravitational Shift", desc: "Orbits are destabilizing due to dark matter.", type: "neutral" }
+       ]
+       const scenario = scenarios[Math.floor(Math.random() * scenarios.length)]
        
        newEvent = {
          id: uuidv4(),
          bodyId: randomBody.id,
-         title: isGood ? `Stellar Evolution: ${randomBody.name}` : `Cosmic Instability: ${randomBody.name}`,
-         description: isGood 
-           ? `The celestial body ${randomBody.name} shows signs of positive evolution. How will you guide it?`
-           : `Disturbing gravitational waves detected from ${randomBody.name}. What is your directive?`,
+         title: `${scenario.title}: ${randomBody.name}`,
+         description: scenario.desc,
          choices: [
-           {
-             label: "Nurture (Genesis)",
-             type: "genesis",
-             effect: (b) => ({ equilibrium: Math.min(100, b.equilibrium + 15), state: 'evolving' }),
-             coinReward: 20
-           },
            {
              label: "Stabilize (Equilibrium)",
              type: "equilibrium",
-             effect: (b) => ({ equilibrium: b.equilibrium + 5, state: 'stable' }),
-             coinReward: 10
+             effect: (b) => ({ equilibrium: 50, state: 'stable' }),
+             coinReward: 20
            },
            {
-             label: "Exploit (Collapse)",
+             label: "Evolve (Genesis)",
+             type: "genesis",
+             effect: (b) => ({ equilibrium: Math.min(100, b.equilibrium + 15), state: 'evolving' }),
+             coinReward: 50
+           },
+           {
+             label: "Harvest (Collapse)",
              type: "collapse",
              effect: (b) => ({ equilibrium: Math.max(0, b.equilibrium - 20), state: 'stressed' }),
-             coinReward: 50 // High short term gain
+             coinReward: 5 // Small reward for risk? Or 0.
            }
          ]
        }

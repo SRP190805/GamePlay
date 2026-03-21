@@ -1,55 +1,44 @@
-import { useMemo } from 'react'
+import { motion } from 'framer-motion'
 
 interface EquilibriumBarProps {
   value: number // 0-100
 }
 
 export function EquilibriumBar({ value }: EquilibriumBarProps) {
-  // 0-33: Collapse (Red)
-  // 33-66: Equilibrium (Blue/White)
-  // 66-100: Genesis (Gold/Green)
-  
-  const zoneColor = useMemo(() => {
-    if (value < 33) return 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]'
-    if (value > 66) return 'bg-yellow-400 shadow-[0_0_10px_rgba(250,204,21,0.5)]'
-    return 'bg-blue-400 shadow-[0_0_10px_rgba(96,165,250,0.5)]'
-  }, [value])
+  const getZone = () => {
+    if (value < 33) return { label: 'Collapse', color: 'text-red-500', barColor: 'bg-red-500' }
+    if (value > 66) return { label: 'Genesis', color: 'text-yellow-400', barColor: 'bg-yellow-400' }
+    return { label: 'Equilibrium', color: 'text-blue-400', barColor: 'bg-blue-400' }
+  }
+
+  const { label, color, barColor } = getZone()
 
   return (
     <div className="w-full space-y-2">
-      <div className="flex justify-between text-xs uppercase tracking-widest text-white/50">
-        <span>Collapse</span>
-        <span>Equilibrium</span>
-        <span>Genesis</span>
+      <div className="flex justify-between items-end">
+        <div className="text-[10px] uppercase tracking-wider text-white/50">Stability</div>
+        <div className={`text-xs font-bold uppercase tracking-widest ${color}`}>{label}</div>
       </div>
       
-      <div className="relative h-4 bg-gray-900 rounded-full overflow-hidden border border-white/10">
-        {/* Zones Background */}
-        <div className="absolute inset-0 flex opacity-20">
-          <div className="w-1/3 h-full bg-red-900" />
-          <div className="w-1/3 h-full bg-blue-900" />
-          <div className="w-1/3 h-full bg-yellow-900" />
-        </div>
-
-        {/* Needle */}
-        <div 
-          className="absolute top-0 bottom-0 w-1 bg-white transition-all duration-500 ease-out z-10"
-          style={{ left: `${value}%` }}
-        >
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-6 bg-white rounded shadow-lg" />
-        </div>
+      <div className="relative h-2 bg-white/5 rounded-full overflow-hidden border border-white/10">
+        {/* Background Gradients */}
+        <div className="absolute inset-0 bg-gradient-to-r from-red-900/40 via-blue-900/40 to-yellow-900/40" />
         
-        {/* Glow Overlay */}
-        <div 
-          className={`absolute inset-0 transition-opacity duration-500 pointer-events-none opacity-30 ${zoneColor}`}
-          style={{ 
-            background: `radial-gradient(circle at ${value}% 50%, currentColor, transparent 70%)` 
-          }}
-        />
+        {/* Indicator */}
+        <motion.div 
+          className="absolute top-0 bottom-0 w-1 bg-white shadow-[0_0_10px_white] z-10"
+          initial={{ left: `${value}%` }}
+          animate={{ left: `${value}%` }}
+          transition={{ type: "spring", stiffness: 100, damping: 20 }}
+        >
+          <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-4 ${barColor} rounded-full shadow-lg border border-white/50`} />
+        </motion.div>
       </div>
       
-      <div className="text-right text-xs text-white/70 font-mono">
-        {value.toFixed(1)}%
+      <div className="flex justify-between text-[10px] font-mono text-white/30">
+        <span>0%</span>
+        <span className="text-white/70">{value.toFixed(1)}%</span>
+        <span>100%</span>
       </div>
     </div>
   )
