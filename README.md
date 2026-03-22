@@ -1,4 +1,4 @@
-# The-Cartographer
+# Cosmogenesis
 
 A browser-based space simulation game where you shape the fate of the universe — one celestial body at a time.
 
@@ -6,9 +6,9 @@ Built with React, Three.js, and Supabase. Runs entirely in the browser with no i
 
 ---
 
-## What is Cartography?
+## What is Cosmogenesis?
 
-Cartography puts you in the role of a cosmic architect. You place stars, planets, moons, and other celestial bodies into a living universe, then guide their evolution through meaningful choices. Every decision shifts the balance between Genesis (thriving) and Collapse (destruction). Push a body too far in either direction and face the consequences — or the rewards.
+Cosmogenesis puts you in the role of a cosmic architect. You place stars, planets, moons, and other celestial bodies into a living universe, then guide their evolution through meaningful choices. Every decision shifts the balance between Genesis (thriving) and Collapse (destruction). Push a body too far in either direction and face the consequences — or the rewards.
 
 The game offers two modes:
 
