@@ -1,4 +1,4 @@
-# The-Cartography
+# The-Cartographer
 
 A browser-based space simulation game where you shape the fate of the universe — one celestial body at a time.
 
