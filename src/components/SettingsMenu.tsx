@@ -1,93 +1,182 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useGameStore } from '../store/gameStore'
-import { Volume2, VolumeX, MousePointer2, X } from 'lucide-react'
+import { Volume2, VolumeX, MousePointer2, X, Eye, EyeOff, Layers, Zap, Monitor } from 'lucide-react'
+import { soundManager } from '../lib/sound'
+
+function Slider({ label, icon: Icon, value, min, max, step = 1, unit = '', color = 'blue',
+  onChange }: {
+  label: string; icon: any; value: number; min: number; max: number;
+  step?: number; unit?: string; color?: string; onChange: (v: number) => void
+}) {
+  const pct = ((value - min) / (max - min)) * 100
+  const colorMap: Record<string, string> = {
+    blue: 'accent-blue-500', purple: 'accent-purple-500',
+    green: 'accent-green-500', yellow: 'accent-yellow-500', red: 'accent-red-500'
+  }
+  return (
+    <div className="space-y-3">
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-3">
+          <Icon className={`w-4 h-4 text-${color}-400`} />
+          <span className="text-white/60 text-xs uppercase tracking-wider">{label}</span>
+        </div>
+        <span className="font-mono text-xs bg-white/5 px-2 py-1 rounded text-white/70">
+          {typeof value === 'number' && !Number.isInteger(value) ? value.toFixed(1) : value}{unit}
+        </span>
+      </div>
+      <div className="relative">
+        <div className="h-1 bg-white/8 rounded-full overflow-hidden">
+          <div className={`h-full bg-${color}-500 rounded-full transition-all`} style={{ width: `${pct}%` }} />
+        </div>
+        <input type="range" min={min} max={max} step={step} value={value}
+          onChange={e => onChange(Number(e.target.value))}
+          className={`absolute inset-0 w-full opacity-0 cursor-pointer h-1 ${colorMap[color]}`}
+        />
+      </div>
+    </div>
+  )
+}
+
+function Toggle({ label, icon: Icon, value, onChange, color = 'blue' }: {
+  label: string; icon: any; value: boolean; onChange: (v: boolean) => void; color?: string
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <Icon className={`w-4 h-4 text-${color}-400`} />
+        <span className="text-white/60 text-xs uppercase tracking-wider">{label}</span>
+      </div>
+      <button onClick={() => onChange(!value)}
+        className={`relative w-10 h-5 rounded-full transition-colors ${value ? `bg-${color}-600` : 'bg-white/10'}`}>
+        <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${value ? 'left-5' : 'left-0.5'}`} />
+      </button>
+    </div>
+  )
+}
 
 export function SettingsMenu({ onClose }: { onClose: () => void }) {
   const { settings, updateSettings } = useGameStore()
-  const [localSettings, setLocalSettings] = useState(settings)
+  const [local, setLocal] = useState(settings)
+  const [activeTab, setActiveTab] = useState<'audio' | 'visual' | 'controls'>('audio')
 
-  const handleChange = (key: keyof typeof settings, value: number) => {
-    setLocalSettings(prev => ({ ...prev, [key]: value }))
+  const set = (key: keyof typeof settings, value: any) => {
+    setLocal(prev => ({ ...prev, [key]: value }))
+    if (key === 'volume') soundManager.setVolume(value)
   }
 
   const handleSave = () => {
-    updateSettings(localSettings)
+    updateSettings(local)
+    soundManager.playSelect()
     onClose()
   }
 
+  const tabs = [
+    { id: 'audio', label: 'Audio' },
+    { id: 'visual', label: 'Visual' },
+    { id: 'controls', label: 'Controls' },
+  ] as const
+
   return (
-    <motion.div 
-      initial={{ scale: 0.9, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      exit={{ scale: 0.9, opacity: 0 }}
-      className="w-full max-w-md bg-zinc-900 border border-white/10 p-8 rounded-2xl shadow-2xl relative"
-      onClick={(e) => e.stopPropagation()} 
+    <motion.div
+      initial={{ scale: 0.92, opacity: 0, y: 20 }}
+      animate={{ scale: 1, opacity: 1, y: 0 }}
+      exit={{ scale: 0.92, opacity: 0, y: 20 }}
+      transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+      className="w-full max-w-md bg-black/95 border border-white/12 p-0 rounded-2xl shadow-2xl relative overflow-hidden"
+      onClick={e => e.stopPropagation()}
     >
-      <button 
-        onClick={onClose} 
-        className="absolute top-4 right-4 text-white/50 hover:text-white transition-colors"
-      >
-        <X className="w-6 h-6" />
-      </button>
-
-      <h2 className="text-2xl font-light tracking-[0.2em] text-white mb-8 uppercase text-center border-b border-white/10 pb-4">
-        System Config
-      </h2>
-
-      <div className="space-y-8">
-        {/* Volume */}
-        <div className="space-y-4">
-          <div className="flex justify-between items-center text-sm text-white/70">
-            <div className="flex items-center gap-3">
-              {localSettings.volume === 0 ? <VolumeX className="w-5 h-5 text-red-400" /> : <Volume2 className="w-5 h-5 text-blue-400" />}
-              <span className="uppercase tracking-wide text-xs">Audio Output Level</span>
-            </div>
-            <span className="font-mono text-xs bg-white/5 px-2 py-1 rounded">{localSettings.volume}%</span>
-          </div>
-          <input 
-            type="range" 
-            min="0" 
-            max="100" 
-            value={localSettings.volume} 
-            onChange={(e) => handleChange('volume', Number(e.target.value))}
-            className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
-          />
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-white/8">
+        <div>
+          <h2 className="text-white font-light tracking-[0.2em] uppercase text-sm">System Configuration</h2>
+          <p className="text-white/30 text-[10px] mt-0.5">The Cartographer</p>
         </div>
-
-        {/* Sensitivity */}
-        <div className="space-y-4">
-          <div className="flex justify-between items-center text-sm text-white/70">
-            <div className="flex items-center gap-3">
-              <MousePointer2 className="w-5 h-5 text-purple-400" />
-              <span className="uppercase tracking-wide text-xs">Camera Sensitivity</span>
-            </div>
-            <span className="font-mono text-xs bg-white/5 px-2 py-1 rounded">{localSettings.motionSensitivity.toFixed(1)}x</span>
-          </div>
-          <input 
-            type="range" 
-            min="0.1" 
-            max="2.0" 
-            step="0.1"
-            value={localSettings.motionSensitivity} 
-            onChange={(e) => handleChange('motionSensitivity', Number(e.target.value))}
-            className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-purple-500"
-          />
-        </div>
+        <button onClick={onClose} className="text-white/30 hover:text-white transition-colors p-1">
+          <X className="w-5 h-5" />
+        </button>
       </div>
 
-      <div className="mt-10 flex justify-center gap-4">
-        <button 
-          onClick={onClose}
-          className="px-6 py-3 bg-transparent border border-white/20 text-white/50 text-xs uppercase tracking-widest font-bold hover:bg-white/5 hover:text-white transition-colors rounded"
-        >
+      {/* Tabs */}
+      <div className="flex border-b border-white/8">
+        {tabs.map(tab => (
+          <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+            className={`flex-1 py-3 text-[10px] uppercase tracking-widest transition-colors ${
+              activeTab === tab.id ? 'text-white border-b border-white' : 'text-white/30 hover:text-white/60'
+            }`}>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
+      <div className="p-6 space-y-6 min-h-[220px]">
+        {activeTab === 'audio' && (
+          <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
+            <Slider label="Master Volume" icon={local.volume === 0 ? VolumeX : Volume2}
+              value={local.volume} min={0} max={100} unit="%" color="blue"
+              onChange={v => set('volume', v)} />
+            <Slider label="Bloom Intensity" icon={Zap}
+              value={local.bloomIntensity} min={0} max={3} step={0.1} color="yellow"
+              onChange={v => set('bloomIntensity', v)} />
+            <div className="bg-white/3 rounded-lg p-3 text-white/30 text-[10px] leading-relaxed">
+              Ambient cosmic drone adapts to system equilibrium. Higher stability = deeper resonance.
+            </div>
+          </motion.div>
+        )}
+
+        {activeTab === 'visual' && (
+          <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
+            <Toggle label="Show Orbit Rings" icon={local.showOrbits ? Eye : EyeOff}
+              value={local.showOrbits} onChange={v => set('showOrbits', v)} color="purple" />
+            <Toggle label="Show Body Labels" icon={Layers}
+              value={local.showLabels} onChange={v => set('showLabels', v)} color="green" />
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <Monitor className="w-4 h-4 text-blue-400" />
+                <span className="text-white/60 text-xs uppercase tracking-wider">Graphics Quality</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {(['low', 'medium', 'high'] as const).map(q => (
+                  <button key={q} onClick={() => set('graphicsQuality', q)}
+                    className={`py-2 rounded text-[10px] uppercase tracking-wider transition-colors ${
+                      local.graphicsQuality === q
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white/5 text-white/40 hover:bg-white/10'
+                    }`}>
+                    {q}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {activeTab === 'controls' && (
+          <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
+            <Slider label="Camera Sensitivity" icon={MousePointer2}
+              value={local.motionSensitivity} min={0.1} max={3.0} step={0.1} color="purple"
+              onChange={v => set('motionSensitivity', v)} />
+            <div className="space-y-2 text-[10px] text-white/30 bg-white/3 rounded-lg p-3">
+              <div className="flex justify-between"><span>Rotate</span><span className="text-white/50">Left Drag</span></div>
+              <div className="flex justify-between"><span>Pan</span><span className="text-white/50">Right Drag</span></div>
+              <div className="flex justify-between"><span>Zoom</span><span className="text-white/50">Scroll Wheel</span></div>
+              <div className="flex justify-between"><span>Pause</span><span className="text-white/50">Escape</span></div>
+              <div className="flex justify-between"><span>Select</span><span className="text-white/50">Click Body</span></div>
+            </div>
+          </motion.div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="flex gap-3 px-6 pb-6">
+        <button onClick={onClose}
+          className="flex-1 py-2.5 border border-white/10 text-white/40 text-[10px] uppercase tracking-widest rounded hover:bg-white/5 transition-colors">
           Cancel
         </button>
-        <button 
-          onClick={handleSave}
-          className="px-8 py-3 bg-white text-black text-xs uppercase tracking-widest font-bold hover:bg-blue-50 transition-colors rounded shadow-[0_0_15px_rgba(255,255,255,0.3)]"
-        >
-          Apply Changes
+        <button onClick={handleSave}
+          className="flex-1 py-2.5 bg-white text-black text-[10px] uppercase tracking-widest font-bold rounded hover:bg-blue-50 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.15)]">
+          Apply
         </button>
       </div>
     </motion.div>
